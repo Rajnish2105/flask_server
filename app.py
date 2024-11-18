@@ -26,14 +26,20 @@ net.setInputSwapRB(True)
 @app.route('/fetch_image', methods=['POST'])
 def fetch_image():
     try:
-        # Receive the image from ESP32-CAM
-        if 'image' in request.files:
-            img_file = request.files['image']  # Get the image file
-            img_data = img_file.read()  # Read raw bytes
-            img_np = np.frombuffer(img_data, dtype=np.uint8)  # Convert to NumPy array
-            return process_image(img_np), 200  # Process and return the processed image
-        else:
-            return "No image provided", 400
+        # Read raw binary data directly from the request body
+        img_data = request.data
+        if not img_data:
+            return "No image data received", 400
+
+        # Decode the binary data to an OpenCV image
+        img_np = np.frombuffer(img_data, dtype=np.uint8)
+        img = cv2.imdecode(img_np, cv2.IMREAD_COLOR)
+        
+        if img is None:
+            return "Invalid image data", 400
+
+        # Process the image and return the result
+        return process_image(img_np), 200
     except Exception as e:
         print(f"Error receiving image: {e}")
         return "Error", 500
