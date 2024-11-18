@@ -1,9 +1,8 @@
-from flask import Flask, Response
-from flask_cors import CORS
+import os
 import cv2
 import numpy as np
-import requests
-import os
+from flask import Flask, Response, request
+from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)
@@ -14,7 +13,6 @@ configPath = os.path.join(os.path.dirname(__file__), 'assets', 'ssd_mobilenet_v3
 weightsPath = os.path.join(os.path.dirname(__file__), 'assets', 'frozen_inference_graph.pb')
 
 # Load class labels
-classNames = []
 with open(classFile, 'rt') as f:
     classNames = f.read().rstrip('\n').split('\n')
 
@@ -25,16 +23,25 @@ net.setInputScale(1.0 / 127.5)
 net.setInputMean((127.5, 127.5, 127.5))
 net.setInputSwapRB(True)
 
-# URL for fetching the image
-image_url = 'http://192.168.60.185/cam-hi.jpg'
-
-def process_image():
+@app.route('/fetch_image', methods=['POST'])
+def fetch_image():
     try:
-        # Fetch the image from the URL
-        img_response = requests.get(image_url, timeout=1.4, verify=False)
-        img_data = img_response.content  # Get raw bytes
-        img_np = np.frombuffer(img_data, dtype=np.uint8)  # Convert to NumPy array
-        img = cv2.imdecode(img_np, cv2.IMREAD_COLOR)  # Decode image
+        # Receive the image from ESP32-CAM
+        if 'image' in request.files:
+            img_file = request.files['image']  # Get the image file
+            img_data = img_file.read()  # Read raw bytes
+            img_np = np.frombuffer(img_data, dtype=np.uint8)  # Convert to NumPy array
+            return process_image(img_np), 200  # Process and return the processed image
+        else:
+            return "No image provided", 400
+    except Exception as e:
+        print(f"Error receiving image: {e}")
+        return "Error", 500
+
+def process_image(img_np):
+    try:
+        # Decode the latest image
+        img = cv2.imdecode(img_np, cv2.IMREAD_COLOR)  # Decode NumPy array to image
 
         # Rotate the image (if necessary)
         img = cv2.rotate(img, cv2.ROTATE_180)
@@ -59,7 +66,7 @@ def process_image():
 
         # Encode the processed image
         _, img_encoded = cv2.imencode('.jpg', img)
-        return img_encoded.tobytes()
+        return Response(img_encoded.tobytes(), mimetype='image/jpeg')
 
     except Exception as e:
         print(f"Error processing image: {e}")
@@ -67,18 +74,5 @@ def process_image():
 
 @app.route('/')
 def home():
-    return 'Welcome home'
+    return 'Welcome to Flask on Vercel!'
 
-@app.route('/video_feed')
-def video_feed():
-    def generate():
-        while True:
-            processed_frame = process_image()
-            if processed_frame:
-                yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + processed_frame + b'\r\n')
-
-    return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
