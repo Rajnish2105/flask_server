@@ -23,8 +23,12 @@ net.setInputScale(1.0 / 127.5)
 net.setInputMean((127.5, 127.5, 127.5))
 net.setInputSwapRB(True)
 
+# Global variable to store the latest processed image
+latest_frame = None
+
 @app.route('/fetch_image', methods=['POST'])
 def fetch_image():
+    global latest_frame
     try:
         # Read raw binary data directly from the request body
         img_data = request.data
@@ -38,17 +42,15 @@ def fetch_image():
         if img is None:
             return "Invalid image data", 400
 
-        # Process the image and return the result
-        return process_image(img_np), 200
+        # Process the image and store the result in the global variable
+        latest_frame = process_image(img)
+        return "Image processed", 200
     except Exception as e:
         print(f"Error receiving image: {e}")
         return "Error", 500
 
-def process_image(img_np):
+def process_image(img):
     try:
-        # Decode the latest image
-        img = cv2.imdecode(img_np, cv2.IMREAD_COLOR)  # Decode NumPy array to image
-
         # Rotate the image (if necessary)
         img = cv2.rotate(img, cv2.ROTATE_180)
 
@@ -72,13 +74,27 @@ def process_image(img_np):
 
         # Encode the processed image
         _, img_encoded = cv2.imencode('.jpg', img)
-        return Response(img_encoded.tobytes(), mimetype='image/jpeg')
+        return img_encoded.tobytes()
 
     except Exception as e:
         print(f"Error processing image: {e}")
         return None
 
+@app.route('/video_feed')
+def video_feed():
+    """Live video feed route."""
+    def generate():
+        while True:
+            # Check if the latest frame is available
+            if latest_frame is not None:
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + latest_frame + b'\r\n')
+
+    return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
 @app.route('/')
 def home():
     return 'Welcome to Flask on Vercel!'
 
+if __name__ == '__main__':
+    app.run(debug=True)
