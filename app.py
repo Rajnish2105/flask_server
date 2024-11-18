@@ -65,6 +65,10 @@ def process_image():
         print(f"Error processing image: {e}")
         return None
 
+@app.route('/')
+def home():
+    return 'Welcome home'
+
 @app.route('/video_feed')
 def video_feed():
     def generate():
