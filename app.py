@@ -1,5 +1,5 @@
 from flask import Flask, Response
-import flask_cors as CORS
+from flask_cors import CORS
 import cv2
 import numpy as np
 import requests
